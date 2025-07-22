@@ -282,7 +282,8 @@ module soc_interconnect
                                                     AxiAddrWidth: BUS_ADDR_WIDTH,
                                                     AxiDataWidth: BUS_DATA_WIDTH,
                                                     NoAddrRules: NR_ADDR_RULES_AXI_SLAVE_PORTS,
-                                                    UniqueIds: 0
+                                                    UniqueIds: 0,
+                                                    PipelineStages: 0
                                                     };
 
     //Reverse interface array ordering since axi_xbar uses big-endian ordering of the arrays

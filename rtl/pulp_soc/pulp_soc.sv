@@ -223,8 +223,8 @@ module pulp_soc import dm::*; #(
     localparam FC_CORE_CLUSTER_ID    = 6'd31;
     localparam CL_CORE_CLUSTER_ID    = 6'd0;
 
-    localparam FC_CORE_CORE_ID       = 4'd0;
-    localparam FC_CORE_MHARTID       = {FC_CORE_CLUSTER_ID, 1'b0, FC_CORE_CORE_ID};
+    localparam FC_CORE_CORE_ID       = {21'b0, FC_CORE_CLUSTER_ID, 1'b0, 4'd0};
+    localparam FC_CORE_MHARTID       = {FC_CORE_CLUSTER_ID, 1'b0, 4'd0};
 
 
     //  PULP RISC-V cores have not continguos MHARTID.

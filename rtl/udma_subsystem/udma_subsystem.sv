@@ -627,7 +627,7 @@ module udma_subsystem
                 .sys_clk_i           ( s_clk_periphs_core[PER_ID_I2C+g_i2c]      ),
                 .periph_clk_i        ( s_clk_periphs_per[PER_ID_I2C+g_i2c]       ),
                 .rstn_i              ( sys_resetn_i                              ),
-                .i2c_eot_o           ( s_i2c_eot[g_i2c]                          ),
+                .eot_o               ( s_i2c_eot[g_i2c]                          ),
 
                 .cfg_data_i          ( s_periph_data_to                          ),
                 .cfg_addr_i          ( s_periph_addr                             ),

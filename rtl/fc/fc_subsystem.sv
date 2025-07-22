@@ -19,7 +19,7 @@ module fc_subsystem #(
     parameter NB_HWPE_PORTS       = 4,
     parameter PULP_SECURE         = 1,
     parameter TB_RISCV            = 0,
-    parameter CORE_ID             = 4'h0,
+    parameter CORE_ID             = 32'h0,
     parameter CLUSTER_ID          = 6'h1F,
     parameter USE_ZFINX           = 1
 )
@@ -181,7 +181,25 @@ module fc_subsystem #(
         .fetch_enable_i        ( fetch_en_int      ),
         .core_busy_o           (                   ),
         .ext_perf_counters_i   ( perf_counters_int ),
-        .fregfile_disable_i    ( 1'b0              ) // try me!
+        .fregfile_disable_i    ( 1'b0              ), // try me!
+        .recover_i                  ( '0                ),
+        .debug_resume_i             ( '0                ),
+        .setback_i                  ( '0                ),
+        .regfile_waddr_a_i          ( '0                ),
+        .regfile_wdata_a_i          ( '0                ),
+        .regfile_we_a_i             ( '0                ),
+        .regfile_waddr_b_i          ( '0                ),
+        .regfile_wdata_b_i          ( '0                ),
+        .regfile_we_b_i             ( '0                ),
+        .pc_recover_i               ( '0                ),
+        .recovery_program_counter_i ( '0                ),
+        .recovery_branch_i          ( '0                ),
+        .recovery_branch_addr_i     ( '0                ),
+        .recovery_mstatus_i         ( '0                ),
+        .recovery_mtvec_i           ( '0                ),
+        .recovery_mscratch_i        ( '0                ),
+        .recovery_mepc_i            ( '0                ),
+        .recovery_mcause_i          ( '0                )
     );
     end else begin: FC_CORE
     assign boot_addr = boot_addr_i & 32'hFFFFFF00; // RI5CY expects 0x80 offset, Ibex expects 0x00 offset (adds reset offset 0x80 internally)
