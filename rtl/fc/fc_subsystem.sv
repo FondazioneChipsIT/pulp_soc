@@ -11,6 +11,7 @@
 
 module fc_subsystem #(
     parameter CORE_TYPE           = 0,
+    parameter USE_XPULP           = 1,     // CV32E40P: PULP ISA extensions (hardware loops, post-increment, SIMD)
     parameter USE_FPU             = 1,
     parameter USE_HWPE            = 1,
     parameter N_EXT_PERF_COUNTERS = 1,
@@ -58,6 +59,7 @@ module fc_subsystem #(
     logic [4:0]  core_irq_ack_id;
     logic        core_irq_ack   ;
     logic [31:0] core_irq_x;
+    logic [31:0] fc_events;
 
     // Boot address, core id, cluster id, fethc enable and core_status
     logic [31:0] boot_addr        ;
@@ -92,7 +94,7 @@ module fc_subsystem #(
     //********************************************************
     //************ CORE DEMUX (TCDM vs L2) *******************
     //********************************************************
-    assign l2_data_master.req    = core_data_req;
+    // l2_data_master.req and l2_instr_master.req are driven next to the core (FC_CORE below)
     assign l2_data_master.add    = core_data_addr;
     assign l2_data_master.wen    = ~core_data_we;
     assign l2_data_master.wdata  = core_data_wdata;
@@ -103,7 +105,6 @@ module fc_subsystem #(
     assign core_data_err         = l2_data_master.r_opc;
 
 
-    assign l2_instr_master.req   = core_instr_req;
     assign l2_instr_master.add   = core_instr_addr;
     assign l2_instr_master.wen   = 1'b1;
     assign l2_instr_master.wdata = '0;
@@ -118,91 +119,87 @@ module fc_subsystem #(
     //********************************************************
     generate
     if ( USE_IBEX == 0) begin: FC_CORE
+    // CV32E40P v2 of OpenHW Group (cv32e40p_v1.8.3 line), Chips-IT branch mpaci/rvfi-fixes. cv32e40p_top holds the core and, with FPU = 1, its FPU.
+    // Boot as with RI5CY: execution starts at boot_addr_i (0x1A000080 after reset), the trap vector table sits at
+    // the 256-byte aligned address below it. The 32 interrupt lines come from the event unit (one-hot, below).
     assign boot_addr = boot_addr_i;
-    riscv_core #(
-        .N_EXT_PERF_COUNTERS ( N_EXT_PERF_COUNTERS ),
-        .PULP_SECURE         ( 1                   ),
-        .PULP_CLUSTER        ( 0                   ),
-        .FPU                 ( USE_FPU             ),
-        .FP_DIVSQRT          ( USE_FPU             ),
-        .SHARED_FP           ( 0                   ),
-        .SHARED_FP_DIVSQRT   ( 2                   ),
-        .Zfinx               ( USE_ZFINX           )
+
+    // CV32E40P (OBI) can issue a second request before the first response; the SoC interconnect cannot take it.
+    // obi_pulp_adapter holds the next request until the response arrives (as in pulp_cluster).
+    obi_pulp_adapter i_obi_pulp_adapter_data (
+        .rst_ni       ( rst_ni                 ),
+        .clk_i        ( clk_i                  ),
+        .core_req_i   ( core_data_req          ),
+        .mem_gnt_i    ( core_data_gnt          ),
+        .mem_rvalid_i ( core_data_rvalid       ),
+        .mem_req_o    ( l2_data_master.req     )
+    );
+
+    obi_pulp_adapter i_obi_pulp_adapter_instr (
+        .rst_ni       ( rst_ni                 ),
+        .clk_i        ( clk_i                  ),
+        .core_req_i   ( core_instr_req         ),
+        .mem_gnt_i    ( core_instr_gnt         ),
+        .mem_rvalid_i ( core_instr_rvalid      ),
+        .mem_req_o    ( l2_instr_master.req    )
+    );
+
+    cv32e40p_top #(
+        .COREV_PULP       ( USE_XPULP ),
+        .COREV_CLUSTER    ( 0         ),
+        .FPU              ( USE_FPU   ),
+        .FPU_ADDMUL_LAT   ( 0         ),
+        .FPU_OTHERS_LAT   ( 0         ),
+        .ZFINX            ( USE_ZFINX ),
+        .NUM_MHPMCOUNTERS ( 1         )
     ) lFC_CORE (
         .clk_i                 ( clk_i             ),
         .rst_ni                ( rst_ni            ),
-        .clock_en_i            ( core_clock_en     ),
-        .test_en_i             ( test_en_i         ),
-        .boot_addr_i           ( boot_addr         ),
-        .core_id_i             ( CORE_ID           ),
-        .cluster_id_i          ( CLUSTER_ID        ),
+        .pulp_clock_en_i       ( 1'b1              ),     // only used with COREV_CLUSTER = 1
+        .scan_cg_en_i          ( test_en_i         ),
 
-        // Instruction Memory Interface:  Interface to Instruction Logaritmic interconnect: Req->grant handshake
-        .instr_addr_o          ( core_instr_addr   ),
+        .boot_addr_i           ( boot_addr         ),
+        .mtvec_addr_i          ( {boot_addr[31:8], 8'h00} ),
+        .dm_halt_addr_i        ( 32'h1A110800      ),
+        .hart_id_i             ( hart_id           ),
+        .dm_exception_addr_i   ( 32'h1A110808      ),
+
+        // Instruction memory interface
         .instr_req_o           ( core_instr_req    ),
-        .instr_rdata_i         ( core_instr_rdata  ),
         .instr_gnt_i           ( core_instr_gnt    ),
         .instr_rvalid_i        ( core_instr_rvalid ),
+        .instr_addr_o          ( core_instr_addr   ),
+        .instr_rdata_i         ( core_instr_rdata  ),
 
-        // Data memory interface:
-        .data_addr_o           ( core_data_addr    ),
+        // Data memory interface
         .data_req_o            ( core_data_req     ),
-        .data_be_o             ( core_data_be      ),
-        .data_rdata_i          ( core_data_rdata   ),
-        .data_we_o             ( core_data_we      ),
         .data_gnt_i            ( core_data_gnt     ),
-        .data_wdata_o          ( core_data_wdata   ),
         .data_rvalid_i         ( core_data_rvalid  ),
+        .data_we_o             ( core_data_we      ),
+        .data_be_o             ( core_data_be      ),
+        .data_addr_o           ( core_data_addr    ),
+        .data_wdata_o          ( core_data_wdata   ),
+        .data_rdata_i          ( core_data_rdata   ),
 
-        // apu-interconnect
-        // handshake signals
-        .apu_master_req_o      (                   ),
-        .apu_master_ready_o    (                   ),
-        .apu_master_gnt_i      ( 1'b1              ),
-        // request channel
-        .apu_master_operands_o (                   ),
-        .apu_master_op_o       (                   ),
-        .apu_master_type_o     (                   ),
-        .apu_master_flags_o    (                   ),
-        // response channel
-        .apu_master_valid_i    ( '0                ),
-        .apu_master_result_i   ( '0                ),
-        .apu_master_flags_i    ( '0                ),
-
-        .irq_i                 ( core_irq_req      ),
-        .irq_id_i              ( core_irq_id       ),
+        // Interrupts
+        .irq_i                 ( core_irq_x        ),
         .irq_ack_o             ( core_irq_ack      ),
         .irq_id_o              ( core_irq_ack_id   ),
-        .irq_sec_i             ( 1'b0              ),
-        .sec_lvl_o             (                   ),
 
+        // Debug
         .debug_req_i           ( debug_req_i       ),
+        .debug_havereset_o     (                   ),
+        .debug_running_o       (                   ),
+        .debug_halted_o        (                   ),
 
+        // CPU control
         .fetch_enable_i        ( fetch_en_int      ),
-        .core_busy_o           (                   ),
-        .ext_perf_counters_i   ( perf_counters_int ),
-        .fregfile_disable_i    ( 1'b0              ), // try me!
-        .recover_i                  ( '0                ),
-        .debug_resume_i             ( '0                ),
-        .setback_i                  ( '0                ),
-        .regfile_waddr_a_i          ( '0                ),
-        .regfile_wdata_a_i          ( '0                ),
-        .regfile_we_a_i             ( '0                ),
-        .regfile_waddr_b_i          ( '0                ),
-        .regfile_wdata_b_i          ( '0                ),
-        .regfile_we_b_i             ( '0                ),
-        .pc_recover_i               ( '0                ),
-        .recovery_program_counter_i ( '0                ),
-        .recovery_branch_i          ( '0                ),
-        .recovery_branch_addr_i     ( '0                ),
-        .recovery_mstatus_i         ( '0                ),
-        .recovery_mtvec_i           ( '0                ),
-        .recovery_mscratch_i        ( '0                ),
-        .recovery_mepc_i            ( '0                ),
-        .recovery_mcause_i          ( '0                )
+        .core_sleep_o          (                   )
     );
     end else begin: FC_CORE
     assign boot_addr = boot_addr_i & 32'hFFFFFF00; // RI5CY expects 0x80 offset, Ibex expects 0x00 offset (adds reset offset 0x80 internally)
+    assign l2_data_master.req  = core_data_req;
+    assign l2_instr_master.req = core_instr_req;
 `ifdef VERILATOR
     ibex_core #(
 `elsif TRACE_EXECUTION
@@ -281,10 +278,7 @@ module fc_subsystem #(
 
     assign supervisor_mode_o = 1'b1;
 
-    generate
-    if ( USE_IBEX == 1) begin : convert_irqs
-    // Ibex supports 32 additional fast interrupts and reads the interrupt lines directly.
-    // Convert ID back to interrupt lines
+    // CV32E40P and Ibex both read 32 interrupt lines: convert the id of the event unit back to one line
     always_comb begin : gen_core_irq_x
         core_irq_x = '0;
         if (core_irq_req) begin
@@ -292,14 +286,28 @@ module fc_subsystem #(
         end
     end
 
+    // The CV32E40P takes interrupts only on lines 3, 7, 11 and 16 to 31 (IRQ_MASK of cv32e40p_pkg). The sources that
+    // soc_peripherals puts on other lines are moved, in front of the interrupt controller, to lines of the upper half
+    // that soc_peripherals leaves at 0. Controller line, core line and vector entry keep one and the same number.
+    // Software events (status bits set by software): only 3 and 7 of the lines 0 to 7 reach the core.
+    // Ibex keeps the numbering of soc_peripherals.
+    always_comb begin : gen_fc_events
+        fc_events = events_i;
+        if (USE_IBEX == 0) begin
+            fc_events[10] = 1'b0;  fc_events[16] = events_i[10];  // FC timer, low half
+            fc_events[15] = 1'b0;  fc_events[21] = events_i[15];  // GPIO
+            fc_events[14] = 1'b0;  fc_events[22] = events_i[14];  // reference clock edges
+            fc_events[8]  = 1'b0;  fc_events[23] = events_i[8];   // DMA, event
+            fc_events[9]  = 1'b0;  fc_events[24] = events_i[9];   // DMA, interrupt
+            fc_events[12] = 1'b0;  fc_events[25] = events_i[12];  // pf_evt
+        end
     end
-    endgenerate
 
     apb_interrupt_cntrl #(.PER_ID_WIDTH(PER_ID_WIDTH)) fc_eu_i (
         .clk_i              ( clk_i              ),
         .rst_ni             ( rst_ni             ),
         .test_mode_i        ( test_en_i          ),
-        .events_i           ( events_i           ),
+        .events_i           ( fc_events          ),
         .event_fifo_valid_i ( event_fifo_valid_i ),
         .event_fifo_fulln_o ( event_fifo_fulln_o ),
         .event_fifo_data_i  ( event_fifo_data_i  ),

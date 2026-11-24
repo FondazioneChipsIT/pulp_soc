@@ -30,7 +30,7 @@ dependencies:
   cluster_interconnect:   { git: "https://github.com/pulp-platform/cluster_interconnect.git", version: 1.1.1 }
   fpnew:                  { git: "https://github.com/pulp-platform/cvfpu.git", rev: "pulp-v0.1.3" }
   jtag_pulp:              { git: "https://github.com/pulp-platform/jtag_pulp.git", rev: "v0.1" }
-  # cv32e40p:               { git: "https://github.com/pulp-platform/cv32e40p.git", rev: "pulpissimo-v3.4.0-rev3"}
+  cv32e40p:               { git: "https://github.com/FondazioneChipsIT/cv32e40p.git", rev: accbdfdc0ec8810ffd62a7e06f73502ac41aec1b }   # FC core, branch nl/bender-pulp-fpu (mpaci/rvfi-fixes + Bender manifest fix + FPU wrapper for the PULP fpnew)
   riscv:                  { git: "https://github.com/AlSaqr-platform/riscv_nn.git", rev: astral-v1.0 }
   ibex:                   { git: "https://github.com/pulp-platform/ibex.git", rev: "pulpissimo-v6.1.1" }
   scm:                    { git: "https://github.com/pulp-platform/scm.git", version: 1.0.1}
