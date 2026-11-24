@@ -35,6 +35,17 @@ module fc_subsystem #(
     APB_BUS.Slave                     apb_slave_eu,
     APB_BUS.Slave                     apb_slave_hwpe,
 
+    // camera parallel interface for the accelerator slot (pins shared with udma_camera)
+    input  logic                      cam_clk_i,
+    input  logic [7:0]                cam_data_i,
+    input  logic                      cam_hsync_i,
+    input  logic                      cam_vsync_i,
+    output logic                      cam_trig_o,
+    // power management of the accelerator slot
+    output logic                      fulgor_pwr_en_o,
+    input  logic                      fulgor_pwr_ack_i,
+    output logic                      fulgor_mem_ret_o,
+
     input  logic                      fetch_en_i,
     input  logic [31:0]               boot_addr_i,
     input  logic                      debug_req_i,
@@ -334,12 +345,23 @@ module fc_subsystem #(
             .test_mode_i       ( test_en_i      ),
             .hwacc_xbar_master ( l2_hwpe_master ),
             .hwacc_cfg_slave   ( apb_slave_hwpe ),
+            .cam_clk_i         ( cam_clk_i      ),
+            .cam_data_i        ( cam_data_i     ),
+            .cam_hsync_i       ( cam_hsync_i    ),
+            .cam_vsync_i       ( cam_vsync_i    ),
+            .cam_trig_o        ( cam_trig_o     ),
+            .pwr_en_o          ( fulgor_pwr_en_o ),
+            .pwr_ack_i         ( fulgor_pwr_ack_i ),
+            .mem_ret_o         ( fulgor_mem_ret_o ),
             .evt_o             ( hwpe_events_o  ),
             .busy_o            (                )
         );
     end
     else begin : no_fc_hwpe_gen
         assign hwpe_events_o = '0;
+        assign cam_trig_o    = 1'b0;
+        assign fulgor_pwr_en_o  = 1'b0;
+        assign fulgor_mem_ret_o = 1'b0;
         assign apb_slave_hwpe.prdata  = '0;
         assign apb_slave_hwpe.pready  = '0;
         assign apb_slave_hwpe.pslverr = '0;

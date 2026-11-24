@@ -42,6 +42,8 @@ module pulp_soc import dm::*; #(
     parameter int unsigned N_SPI  = 1,
     parameter int unsigned N_I2C  = 2,
     parameter USE_ZFINX           = 1,
+    // Fulgor peripheral in the accelerator slot
+    parameter int unsigned FULGOR_TRIG_GPIO = 15,   // GPIO pad that carries the trigger output of the slot when its PADFUN field is 1
     localparam C2S_AW_WIDTH       = AXI_ID_IN_WIDTH+AXI_ADDR_WIDTH+AXI_USER_WIDTH+$bits(axi_pkg::len_t)+$bits(axi_pkg::size_t)+$bits(axi_pkg::burst_t)+$bits(axi_pkg::cache_t)+$bits(axi_pkg::prot_t)+$bits(axi_pkg::qos_t)+$bits(axi_pkg::region_t)+$bits(axi_pkg::atop_t)+1,
     localparam C2S_W_WIDTH        = AXI_USER_WIDTH+AXI_STRB_WIDTH_IN+AXI_DATA_IN_WIDTH+1,
     localparam C2S_R_WIDTH        = AXI_ID_IN_WIDTH+AXI_DATA_IN_WIDTH+AXI_USER_WIDTH+$bits(axi_pkg::resp_t)+1,
@@ -300,6 +302,29 @@ module pulp_soc import dm::*; #(
 
     logic [NGPIO-1:0][NBIT_PADCFG-1:0] s_gpio_cfg;
     logic [63:0][1:0]      s_pad_mux;
+
+    // Trigger output of the accelerator slot on a GPIO pad. The pads of this platform have no
+    // multiplexer and pulp_soc cannot get a new port (bound with .* by the top level), so the choice is made here:
+    // with the PADFUN field of index FULGOR_TRIG_GPIO at 1, that pad is an output and carries the trigger; with any
+    // other value (0 after reset) it is the plain GPIO.
+    logic [NGPIO-1:0]      s_gpio_out, s_gpio_dir;
+    logic                  s_trig_sel, s_cam_trig;
+    assign s_trig_sel = (s_pad_mux[FULGOR_TRIG_GPIO] == 2'b01);
+    always_comb begin
+        gpio_out_o = s_gpio_out;
+        gpio_dir_o = s_gpio_dir;
+        if (s_trig_sel) begin
+            gpio_out_o[FULGOR_TRIG_GPIO] = s_cam_trig;
+            gpio_dir_o[FULGOR_TRIG_GPIO] = 1'b1;
+        end
+    end
+
+    // Power-management signals of the accelerator slot. The platform RTL has no power switches: the request is
+    // looped back to the acknowledge. No ports for them: the top level of the platform binds pulp_soc with .*,
+    // a new port would break it.
+    logic                  s_fulgor_pwr_en, s_fulgor_pwr_ack, s_fulgor_mem_ret;
+    assign s_fulgor_pwr_ack = s_fulgor_pwr_en;
+
     logic [63:0][5:0]      s_pad_cfg;
 
     logic                  s_periph_clk;
@@ -632,8 +657,8 @@ module pulp_soc import dm::*; #(
         .cluster_fll_master     ( s_cluster_fll_master   ),
 
         .gpio_in                ( gpio_in_i              ),
-        .gpio_out               ( gpio_out_o             ),
-        .gpio_dir               ( gpio_dir_o             ),
+        .gpio_out               ( s_gpio_out             ),
+        .gpio_dir               ( s_gpio_dir             ),
         .gpio_padcfg            ( s_gpio_cfg             ),
 
         .pad_mux_o              ( s_pad_mux              ),
@@ -778,6 +803,15 @@ module pulp_soc import dm::*; #(
         .l2_data_master      ( s_lint_fc_data_bus  ),
         .l2_instr_master     ( s_lint_fc_instr_bus ),
         .l2_hwpe_master      ( s_lint_hwpe_bus     ),
+
+        .cam_clk_i           ( cam_clk_i           ),
+        .cam_data_i          ( cam_data_i          ),
+        .cam_hsync_i         ( cam_hsync_i         ),
+        .cam_vsync_i         ( cam_vsync_i         ),
+        .cam_trig_o          ( s_cam_trig       ),
+        .fulgor_pwr_en_o      ( s_fulgor_pwr_en      ),
+        .fulgor_pwr_ack_i     ( s_fulgor_pwr_ack     ),
+        .fulgor_mem_ret_o     ( s_fulgor_mem_ret     ),
         .apb_slave_eu        ( s_apb_eu_bus        ),
         .apb_slave_hwpe      ( s_apb_hwpe_bus      ),
         .debug_req_i         ( dm_debug_req[FC_CORE_MHARTID] ),
