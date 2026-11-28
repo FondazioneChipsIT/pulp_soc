@@ -1,9 +1,8 @@
 // ============================================================================
 // File: fc_hwpe.sv
-// Description: Fulgor peripheral (fulgor_pulp_slot) in the accelerator slot
-//              of the SoC domain, in place of the hwpe-mac-engine example.
-//              Same module name and ports as the original, plus the camera
-//              pins, a trigger output and three power-management signals.
+// Description: Peripheral in the accelerator slot of the SoC domain, in place
+//              of the hwpe-mac-engine example. Same module name as the
+//              original, with additional ports.
 //
 //   The APB port is used directly (the original goes through apb2per towards
 //   an HWPE peripheral port). The four memory masters are tied off.
@@ -42,6 +41,7 @@ module fc_hwpe
     fulgor_pulp_slot i_fulgor (
         .clk_i         ( clk_i                             ),
         .rst_ni        ( rst_ni                            ),
+        .test_mode_i   ( test_mode_i                       ),
         .psel_i        ( hwacc_cfg_slave.psel              ),
         .penable_i     ( hwacc_cfg_slave.penable           ),
         .pwrite_i      ( hwacc_cfg_slave.pwrite            ),
@@ -70,7 +70,5 @@ module fc_hwpe
         assign hwacc_xbar_master[i].wdata = '0;
         assign hwacc_xbar_master[i].be    = '0;
     end
-
-    // not used here: test_mode_i
 
 endmodule
